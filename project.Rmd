@@ -1,0 +1,120 @@
+---
+title: "Practical Machine Learning Project"
+author: "Mauro Tiberi"
+date: "February 27, 2016"
+output: html_document
+---
+
+###Goals###
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+Our goal is to predict the manner in which they did the exercise. We will build a model and use it to predict 20 different test cases. 
+
+###Load the libraries and add an utility function###
+
+```{r, message=F, warning=F}
+library(caret)
+library(randomForest)
+
+read_data<- function(name) {
+  
+  datadir<- "./data"
+  localname<- file.path(datadir, name)
+  
+  if (!file.exists(datadir))
+    dir.create(datadir)
+
+  if (!file.exists(localname)) {
+    remotefolder<- "https://d396qusza40orc.cloudfront.net/predmachlearn/"
+    remotename<- paste0(remotefolder, name)
+    download.file(remotename, localname, method="curl")
+  }
+  
+  read.csv(localname, na.strings = c("NA", ""))
+}
+```
+
+###Load the training data and select the variables of the model###
+
+The first 8 fields don't contain measurements so we just ignore them.
+
+We also exclude the output variable "classe" that is the last one.
+
+Of the remaining variables we only use the ones that don't contain undefined values.
+
+
+
+```{r, cache=T}
+pml_training<- read_data("pml-training.csv")
+
+candidates<- names(pml_training)[8:ncol(pml_training)-1]
+
+chosen<- sapply(candidates, function(col) sum(is.na(pml_training[, col])) == 0)
+
+input_fields<- candidates[chosen]
+
+input<-pml_training[,input_fields]
+output<-pml_training$classe
+
+```
+
+###Split the data into training and validation sets###
+
+We split the input set into training (70%) and validation (30%) sets.
+
+```{r, cache=T}
+
+set.seed(54321) # for repeatability
+
+partition<-createDataPartition(output, p=0.7, list=F)
+
+training.input<-  input[partition,] 
+training.output<- output[partition]
+
+validation.input <- input[-partition,]
+validation.output<- output[-partition]
+
+```
+
+###Train the Model###
+
+We train our model using the random forest method with 200 trees and a 5-fold cross validation control.
+
+```{r, cache=T}
+
+set.seed(12345) # for repeatability
+
+control<- trainControl(5, method="cv")
+model<- train(training.output ~ ., data=training.input, method="rf", trControl=control, ntree=200)
+model
+```
+
+###Measure the performance of the model###
+
+We use the model to predict the output of the validation set and compare the prediction with the actual output .
+
+```{r, cache=T}
+validation.predicted<- predict(model, validation.input) 
+
+cm<- confusionMatrix(validation.output, validation.predicted)
+cm
+```
+
+We can see a very high accuracy of prediction in the validation set.
+
+```{r, cache=T}
+cm$overall[["Accuracy"]]
+```
+
+###Use the model to predict the output of the testing set###
+
+```{r, cache=T}
+pml_testing<- read_data("pml-testing.csv")
+
+testing<-pml_testing[,input_fields]
+
+predict(model, testing)
+```
